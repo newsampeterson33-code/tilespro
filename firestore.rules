@@ -1,0 +1,189 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (Firebase Auth UID)
+    // Fields:
+    //   - uid: string (required) - Auth UID
+    //   - name: string (required) - Full name
+    //   - email: string (required) - User email
+    //   - role: string (required) - 'admin' or 'staff'
+    //   - status: string (required) - 'pending' or 'approved'
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: tiles
+    // Document ID: {tileId}
+    // Fields:
+    //   - name: string (required)
+    //   - type: string (required)
+    //   - quantity: number (required)
+    //   - costPrice: number (required)
+    //   - sellingPrice: number (required)
+    //   - lowStockThreshold: number (optional)
+    //   - updatedAt: timestamp (required)
+    //
+    // Collection: transactions
+    // Document ID: {transactionId}
+    // Fields:
+    //   - tileId: string (required)
+    //   - tileName: string (required)
+    //   - quantity: number (required)
+    //   - priceSold: number (required)
+    //   - staffId: string (required)
+    //   - staffName: string (required)
+    //   - timestamp: timestamp (required)
+    //
+    // Collection: vendors
+    // Document ID: {vendorId}
+    // Fields:
+    //   - name: string (required)
+    //   - contact: string (optional)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: vendorTransactions
+    // Document ID: {transactionId}
+    // Fields:
+    //   - vendorId: string (required)
+    //   - vendorName: string (required)
+    //   - productType: string (required)
+    //   - quantityCartons: number (required)
+    //   - amount: number (required)
+    //   - date: timestamp (required)
+    //   - staffId: string (required)
+    //   - staffName: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+             (request.auth.token.email == "newsampeterson.33@gmail.com" || 
+              request.auth.token.email == "owiat.jefferson.official@gmail.com") && 
+             request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+
+    function isApproved() {
+      return isAuthenticated() && (
+        isSuperAdmin() || (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved' || 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        )
+      );
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role', 'status']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string &&
+             data.role in ['admin', 'staff'] &&
+             data.status in ['pending', 'approved'];
+    }
+
+    function isValidTile(data) {
+      return data.keys().hasAll(['name', 'type', 'quantity', 'costPrice', 'sellingPrice']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.type is string && data.quantity is number &&
+             data.costPrice is number && data.costPrice >= 0 &&
+             data.sellingPrice is number && data.sellingPrice >= 0;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['tileId', 'tileName', 'quantity', 'priceSold', 'staffId', 'staffName', 'timestamp']) &&
+             data.tileId is string && data.quantity is number && data.quantity > 0 &&
+             data.priceSold is number && data.staffId == request.auth.uid;
+    }
+
+    function isValidVendor(data) {
+      return data.keys().hasAll(['name', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200;
+    }
+
+    function isValidVendorTransaction(data) {
+      return data.keys().hasAll(['vendorId', 'vendorName', 'productType', 'quantityCartons', 'amount', 'date', 'staffId', 'staffName']) &&
+             data.vendorId is string && data.productType is string && 
+             data.quantityCartons is number && data.amount is number &&
+             data.staffId == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || userId == request.auth.token.email || (isAuthenticated() && resource.data.email.lower() == request.auth.token.email.lower()) || isAdmin();
+      // Allow searching for pre-approved email
+      allow list: if isAuthenticated() && (isAdmin() || request.query.filters.email.lower() == request.auth.token.email.lower());
+      // Allow self-registration OR admin creation OR linking
+      allow create: if isAuthenticated() && 
+                      (isOwner(userId) || isAdmin()) && 
+                      isValidUser(request.resource.data) && 
+                      (
+                        isAdmin() || 
+                        (request.resource.data.email.lower() == request.auth.token.email.lower() && (
+                          request.resource.data.status == 'pending' || 
+                          request.resource.data.status == 'approved'
+                        ))
+                      );
+      // Allow user to update their own profile during linking or for basic info
+      allow update: if (isAdmin() && isValidUser(request.resource.data)) || 
+                      (isOwner(userId) && 
+                       isValidUser(request.resource.data) &&
+                       request.resource.data.role == resource.data.role &&
+                       request.resource.data.status == resource.data.status);
+      // Allow user to delete their own placeholder doc during linking (by ID or by email field)
+      allow delete: if isAuthenticated() && (userId == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower() || isAdmin());
+    }
+
+    match /tiles/{tileId} {
+      allow read: if isApproved();
+      allow create, update, delete: if isAdmin() && isValidTile(request.resource.data);
+      
+      // Staff can update quantity during a sale
+      allow update: if isApproved() && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantity', 'updatedAt']) &&
+                      isValidTile(request.resource.data);
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isApproved();
+      allow create: if isApproved() && isValidTransaction(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    match /vendors/{vendorId} {
+      allow read: if isApproved();
+      allow create, update, delete: if isAdmin() && isValidVendor(request.resource.data);
+    }
+
+    match /vendorTransactions/{transactionId} {
+      allow read: if isApproved();
+      allow create: if isApproved() && isValidVendorTransaction(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+  }
+}

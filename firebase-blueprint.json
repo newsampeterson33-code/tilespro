@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user (Admin or Staff)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "staff"] },
+        "status": { "type": "string", "enum": ["pending", "approved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role", "status"]
+    },
+    "Tile": {
+      "title": "Tile",
+      "description": "Tile inventory item",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "quantity": { "type": "number" },
+        "costPrice": { "type": "number" },
+        "sellingPrice": { "type": "number" },
+        "lowStockThreshold": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type", "quantity", "costPrice", "sellingPrice"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Sales or purchase log",
+      "type": "object",
+      "properties": {
+        "tileId": { "type": "string" },
+        "tileName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "priceSold": { "type": "number" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tileId", "quantity", "priceSold", "staffId", "timestamp"]
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "Vendor profile",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "contact": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "VendorTransaction": {
+      "title": "VendorTransaction",
+      "description": "History of products taken by a vendor",
+      "type": "object",
+      "properties": {
+        "vendorId": { "type": "string" },
+        "vendorName": { "type": "string" },
+        "productType": { "type": "string" },
+        "quantityCartons": { "type": "number" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" },
+        "staffId": { "type": "string" },
+        "staffName": { "type": "string" }
+      },
+      "required": ["vendorId", "productType", "quantityCartons", "amount", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and roles"
+    },
+    "/tiles/{tileId}": {
+      "schema": "Tile",
+      "description": "Inventory of tiles"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Sales transaction history"
+    },
+    "/vendors/{vendorId}": {
+      "schema": "Vendor",
+      "description": "Vendor profiles"
+    },
+    "/vendorTransactions/{transactionId}": {
+      "schema": "VendorTransaction",
+      "description": "Vendor transaction history"
+    }
+  }
+}
